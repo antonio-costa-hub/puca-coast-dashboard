@@ -73,9 +73,11 @@
     /* ── HEADER ──────────────────────────────────────────────── */
     header {
       position: sticky; top: 0; z-index: 100;
-      padding: 0 32px;
       border-bottom: 1px solid var(--border);
       backdrop-filter: blur(24px); background: rgba(8,13,26,.88);
+    }
+    .hdr-main {
+      padding: 0 32px;
       display: flex; align-items: center; justify-content: space-between;
       height: 60px;
     }
@@ -93,14 +95,18 @@
     }
 
     /* Tabs */
-    .tabs { display: flex; gap: 4px; margin-left: 28px; }
+    .tabs {
+      display: flex; gap: 4px; padding: 0 28px 8px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
     .tab-btn {
       padding: 7px 18px; border-radius: 8px; border: none; cursor: pointer;
-      font-size: 13px; font-weight: 600; font-family: inherit;
-      background: transparent; color: var(--txt2); transition: all .15s;
+      font-size: 13px; font-weight: 600; font-family: inherit; white-space: nowrap;
+      background: transparent; color: var(--txt2); transition: all .15s; flex-shrink: 0;
     }
     .tab-btn:hover  { color: var(--txt); background: rgba(255,255,255,.06); }
-    .tab-btn.active { color: var(--txt); background: rgba(0,194,255,.12); color: var(--blue); }
+    .tab-btn.active { color: var(--blue); background: rgba(0,194,255,.12); }
 
     /* Status + actions */
     .hdr-right { display: flex; align-items: center; gap: 10px; }
@@ -249,7 +255,7 @@
     .sync-right { display:flex; gap:8px; }
 
     /* ── TABLE ───────────────────────────────────────────────── */
-    .tbl-wrap { background:var(--card); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+    .tbl-wrap { background:var(--card); border:1px solid var(--border); border-radius:16px; overflow-x:auto; }
     table { width:100%; border-collapse:collapse; }
     thead th {
       padding:12px 14px; text-align:right;
@@ -329,8 +335,54 @@
       main{padding:16px;}
       .g4,.g2,.g3{grid-template-columns:1fr;}
       .kpi-val{font-size:22px;}
-      header{padding:0 16px;}
-      .tabs{margin-left:14px;}
+      .hdr-main{padding:0 16px;}
+      .tabs{padding:0 10px 8px;}
+    }
+    @media(max-width:600px){
+      /* Header compacto */
+      .hdr-main { height:52px; }
+      .brand-name { font-size:15px; }
+      .brand-logo { width:28px; height:28px; font-size:11px; }
+      .hdr-right { gap:6px; }
+      .conn-badge { padding:4px 8px; font-size:10px; }
+      #conn-label { display:none; }
+      #save-btn { display:none; } /* botão de salvar fica só na página de estoque */
+      .btn-ghost.btn-sm { padding:6px 10px; font-size:12px; }
+
+      /* Tabs menores */
+      .tab-btn { padding:5px 13px; font-size:12px; }
+
+      /* Tabelas: scroll horizontal + tamanho mínimo */
+      .tbl-wrap { border-radius:12px; }
+      table { min-width:520px; }
+
+      /* Cards */
+      .card { padding:16px; }
+      .kpi  { padding:16px; }
+      .kpi-val { font-size:20px; }
+      .kpi-ico { font-size:16px; }
+
+      /* Estoque: sync bar */
+      .sync-bar { flex-wrap:wrap; gap:8px; }
+      .stock-hdr { flex-direction:column; align-items:flex-start; gap:12px; }
+      .stock-hdr > div:last-child { width:100%; display:flex; gap:8px; }
+      .stock-hdr > div:last-child .btn { flex:1; }
+
+      /* Vendas: busca */
+      .search-bar { padding:8px 14px; }
+
+      /* Modal: bottom sheet */
+      .modal-overlay { align-items:flex-end; padding:0; }
+      .modal-box {
+        border-radius:20px 20px 0 0; max-height:92vh;
+        padding:24px 20px 32px;
+      }
+      .form-2col { grid-template-columns:1fr; }
+      .modal-footer { flex-direction:column-reverse; }
+      .modal-footer .btn { width:100%; justify-content:center; padding:12px; }
+
+      /* Setup box */
+      .setup-box { padding:24px 20px; }
     }
 
     /* ── SEARCH BAR ──────────────────────────────────────────── */
@@ -430,25 +482,25 @@
 
 <!-- ═══ HEADER ═══ -->
 <header>
-  <div style="display:flex;align-items:center">
+  <div class="hdr-main">
     <div class="brand">
       <div class="brand-logo">PC</div>
       <div class="brand-name">PUCA COAST</div>
     </div>
-    <nav class="tabs">
-      <button class="tab-btn active" onclick="switchTab('overview',this)">Visão Geral</button>
-      <button class="tab-btn"        onclick="switchTab('stock',this)">📦 Estoque</button>
-      <button class="tab-btn"        onclick="switchTab('sales',this)">🛍️ Vendas</button>
-    </nav>
-  </div>
-  <div class="hdr-right">
-    <div class="conn-badge" onclick="openSetup()" title="Clique para configurar">
-      <div class="conn-dot" id="conn-dot"></div>
-      <span id="conn-label">Desconectado</span>
+    <div class="hdr-right">
+      <div class="conn-badge" onclick="openSetup()" title="Clique para configurar">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span id="conn-label">Desconectado</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="refresh()">↺ Atualizar</button>
+      <button class="btn btn-success btn-sm" id="save-btn" onclick="saveAll()" disabled>✓ Salvar</button>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="refresh()">↺ Atualizar</button>
-    <button class="btn btn-success btn-sm" id="save-btn" onclick="saveAll()" disabled>✓ Salvar no Sheets</button>
   </div>
+  <nav class="tabs">
+    <button class="tab-btn active" onclick="switchTab('overview',this)">Visão Geral</button>
+    <button class="tab-btn"        onclick="switchTab('stock',this)">📦 Estoque</button>
+    <button class="tab-btn"        onclick="switchTab('sales',this)">🛍️ Vendas</button>
+  </nav>
 </header>
 
 <!-- ═══ VISÃO GERAL ═══ -->
@@ -691,8 +743,9 @@
 
 <script>
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
-const URL_KEY   = 'puca_script_url';
-const CACHE_KEY = 'puca_stock_cache';
+const URL_KEY     = 'puca_script_url';
+const CACHE_KEY   = 'puca_stock_cache';
+const DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzjOUvFhYNYynd663xixos7brMLVEwxRLZzyPe63az15KhIh_4AlupJhunO3AvTNIuW/exec';
 
 const MODEL_DOT = {
   'Manifesto':   '#00e5a0',
@@ -737,7 +790,7 @@ const FALLBACK = {
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 const S = {
-  url:         localStorage.getItem(URL_KEY) || '',
+  url:         localStorage.getItem(URL_KEY) || DEFAULT_URL,
   items:       [],
   saved:       [],
   fin:         {},
@@ -1283,21 +1336,9 @@ async function submitSale() {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
-  // Show setup if no URL configured
-  if (!S.url) {
-    // Check if there's cached data to show while setup is pending
-    const cached = getCached();
-    if (cached) {
-      loadData(cached);
-      S.offline = true;
-      setConn('warn', 'Dados em cache');
-    } else {
-      loadData(FALLBACK);
-      S.offline = true;
-      setConn('', 'Não conectado');
-    }
-    document.getElementById('setup-overlay').classList.remove('hidden');
-    return;
+  // Save URL to localStorage if using the default
+  if (!localStorage.getItem(URL_KEY)) {
+    localStorage.setItem(URL_KEY, DEFAULT_URL);
   }
 
   // Try to load from Sheets
