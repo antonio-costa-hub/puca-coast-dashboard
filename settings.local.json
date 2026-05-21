@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__3d2bff82-3c24-4a51-a0ca-378ba55a4ada__read_file_content",
+      "Bash(gh auth *)",
+      "WebFetch(domain:script.google.com)",
+      "WebFetch(domain:script.googleusercontent.com)",
+      "Bash(python -c \"import pandas as pd; xl = pd.ExcelFile\\('C:/Users/anton/PUCA/Custos e precificação MANIFESTO.xlsx'\\); print\\(xl.sheet_names\\); [print\\(f'\\\\n=== {s} ===\\\\n', pd.read_excel\\('C:/Users/anton/PUCA/Custos e precificação MANIFESTO.xlsx', sheet_name=s, header=None\\).to_string\\(\\)\\) for s in xl.sheet_names]\")",
+      "Bash(py --version)",
+      "Bash(where py *)",
+      "Bash(where python3 *)",
+      "Bash(C:\\\\Users\\\\anton\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\python3.exe --version)",
+      "PowerShell(Get-Command python, python3, py -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command python -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command python3 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command py -ErrorAction SilentlyContinue)",
+      "PowerShell(python -c \"import sys; print\\(sys.version\\)\" 2>&1)",
+      "Read(//c/Users/anton/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/7a881aa7-97eb-450a-a1c4-88d1ada1daa2/dde48fa3-04fb-4f69-986d-e4eb4a7cf655/skills/xlsx/**)",
+      "Bash(python scripts/recalc.py \"C:/Users/anton/PUCA/Custos e precificação MANIFESTO.xlsx\")",
+      "PowerShell($env:PATH -split \";\" | ForEach-Object { if \\(Test-Path \"$_\\\\python.exe\"\\) { \"$_\\\\python.exe\" } })"
+    ]
+  }
+}
