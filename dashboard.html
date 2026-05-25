@@ -9,7 +9,7 @@
       --bg:     #080d1a;
       --bg2:    #0e1628;
       --card:   rgba(255,255,255,.045);
-      --cardh:  rgba(255,255,255,.075);
+      --cardh:  rgba(255,255,255,.075);h
       --border: rgba(255,255,255,.085);
       --blue:   #00c2ff;
       --coral:  #ff6b35;
@@ -1336,6 +1336,9 @@ async function submitSale() {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
+  // Esconde o modal de setup imediatamente — a DEFAULT_URL já está configurada
+  document.getElementById('setup-overlay').classList.add('hidden');
+
   // Save URL to localStorage if using the default
   if (!localStorage.getItem(URL_KEY)) {
     localStorage.setItem(URL_KEY, DEFAULT_URL);
