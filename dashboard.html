@@ -115,7 +115,9 @@
       font-size: 11px; color: var(--txt2);
       background: var(--card); border: 1px solid var(--border);
       border-radius: 20px; padding: 5px 12px; cursor: pointer;
+      transition: border-color .15s, background .15s;
     }
+    .conn-badge:hover { border-color:rgba(255,255,255,.25); background:rgba(255,255,255,.08); }
     .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--txt3); }
     .conn-dot.ok     { background: var(--green); box-shadow: 0 0 6px rgba(0,229,160,.5); }
     .conn-dot.error  { background: var(--red); }
@@ -285,9 +287,9 @@
     /* Qty controls */
     .qty-wrap { display:flex; align-items:center; justify-content:flex-end; gap:5px; }
     .qty-btn {
-      width:24px; height:24px; border:1px solid var(--border);
+      width:32px; height:32px; border:1px solid var(--border);
       background:rgba(255,255,255,.05); color:var(--txt2); border-radius:6px;
-      cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center;
+      cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center;
       transition:all .12s; flex-shrink:0; font-family:inherit;
     }
     .qty-btn:hover { background:rgba(255,255,255,.12); color:var(--txt); border-color:rgba(255,255,255,.2); }
@@ -453,6 +455,24 @@
     }
     .modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:22px; }
     @media(max-width:520px){ .form-2col{grid-template-columns:1fr;} .modal-box{padding:22px 18px;} }
+
+    /* ── ALERTS BAR ──────────────────────────────────────────── */
+    .alerts-bar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+    .alert-pill { display:flex; align-items:center; gap:6px; padding:7px 14px; border-radius:100px; font-size:12px; font-weight:600; cursor:default; }
+    .alert-red    { background:rgba(255,71,87,.15);  color:#ff4757; border:1px solid rgba(255,71,87,.25); }
+    .alert-yellow { background:rgba(255,214,10,.12); color:#ffd60a; border:1px solid rgba(255,214,10,.2); }
+    .alert-blue   { background:rgba(0,194,255,.1);   color:#00c2ff; border:1px solid rgba(0,194,255,.18); }
+
+    /* ── SAVED FLASH ─────────────────────────────────────────── */
+    @keyframes savedFlash { 0%{background:rgba(0,229,160,.18)} 100%{background:transparent} }
+    .saved-flash { animation:savedFlash 1.2s ease-out; }
+
+    /* ── KPI ACTION TEXT ─────────────────────────────────────── */
+    .kpi-action { font-size:11px; margin-top:7px; font-weight:700; }
+
+    /* ── BADGE CLICÁVEL ──────────────────────────────────────── */
+    .badge-link { cursor:pointer; }
+    .badge-link:hover { opacity:.8; }
   </style>
 </head>
 <body>
@@ -488,7 +508,8 @@
       <div class="brand-name">PUCA COAST</div>
     </div>
     <div class="hdr-right">
-      <div class="conn-badge" onclick="openSetup()" title="Clique para configurar">
+      <div class="conn-badge" onclick="openSetup()" title="Clique para configurar a conexão">
+        <span style="font-size:10px;opacity:.6">⚙️</span>
         <div class="conn-dot" id="conn-dot"></div>
         <span id="conn-label">Desconectado</span>
       </div>
@@ -497,9 +518,9 @@
     </div>
   </div>
   <nav class="tabs">
-    <button class="tab-btn active" onclick="switchTab('overview',this)">Visão Geral</button>
-    <button class="tab-btn"        onclick="switchTab('stock',this)">📦 Estoque</button>
-    <button class="tab-btn"        onclick="switchTab('sales',this)">🛍️ Vendas</button>
+    <button class="tab-btn active" onclick="switchTab('overview',this)" title="Atalho: tecla 1">Visão Geral</button>
+    <button class="tab-btn"        onclick="switchTab('stock',this)"   title="Atalho: tecla 2">📦 Estoque</button>
+    <button class="tab-btn"        onclick="switchTab('sales',this)"   title="Atalho: tecla 3">🛍️ Vendas</button>
   </nav>
 </header>
 
@@ -507,11 +528,13 @@
 <div id="page-overview" class="page active">
 <main>
 
+  <div id="alerts-bar" class="alerts-bar"></div>
+
   <div class="g4" id="kpi-grid">
     <div class="kpi kb"><div class="kpi-ico">💰</div><div class="kpi-lbl">Faturamento Total</div><div class="kpi-val cb" id="k-fat">—</div><div class="kpi-sub" id="k-fat-sub">—</div></div>
     <div class="kpi ko"><div class="kpi-ico">🏭</div><div class="kpi-lbl">Custo de Produção</div><div class="kpi-val ct" id="k-cus">—</div><div class="kpi-sub" id="k-cus-sub">—</div></div>
-    <div class="kpi kr"><div class="kpi-ico">📉</div><div class="kpi-lbl">Resultado Atual</div><div class="kpi-val cr" id="k-res">—</div><div class="kpi-sub">Margem potencial do estoque: <span id="k-pot">—</span></div></div>
-    <div class="kpi kg"><div class="kpi-ico">🏦</div><div class="kpi-lbl">Saldo Real</div><div class="kpi-val cg" id="k-sal">—</div><div class="kpi-sub">Disponível − Dívidas</div></div>
+    <div class="kpi kr" id="kpi-res"><div class="kpi-ico" id="k-res-ico">📉</div><div class="kpi-lbl">Resultado Atual</div><div class="kpi-val cr" id="k-res">—</div><div class="kpi-sub">Estoque: <span id="k-pot">—</span> de margem</div><div class="kpi-action" id="k-res-action"></div></div>
+    <div class="kpi kg"><div class="kpi-ico">🏦</div><div class="kpi-lbl">Saldo Real</div><div class="kpi-val cg" id="k-sal">—</div><div class="kpi-sub">= Caixa + A Receber − Dívidas</div></div>
   </div>
 
   <div class="g2">
@@ -896,6 +919,10 @@ async function saveAll() {
       const res = await apiFetch(S.url, 'updateQty', { sheetRow: item.sheetRow, qty: item.qty });
       if (res.error) throw new Error(res.error);
       ok++;
+      const idx = S.items.indexOf(item);
+      const inp = document.querySelector(`input[data-idx="${idx}"]`);
+      const row = inp ? inp.closest('tr') : null;
+      if (row) { row.classList.add('saved-flash'); setTimeout(function(){ row.classList.remove('saved-flash'); }, 1200); }
     } catch(e) { fail++; }
   }
 
@@ -935,6 +962,7 @@ function getCached() {
 
 // ── RENDER ALL ────────────────────────────────────────────────────────────────
 function renderAll() {
+  renderAlerts();
   renderKPIs();
   renderFinancial();
   renderPerformance();
@@ -951,14 +979,39 @@ function renderKPIs() {
   const sal  = f.saldoReal     || 1619.51;
   const res  = fat - cus;
   const {totalCost, totalSale} = stockTotals();
+  const stockMargin = totalSale - totalCost;
 
   set('k-fat', R(fat));
   set('k-fat-sub', `${f.totalVendido||87} peças vendidas`);
   set('k-cus', R(cus));
   set('k-cus-sub', `${f.totalProduzido||122} peças produzidas`);
-  set('k-res', (res < 0 ? '−' : '') + R(Math.abs(res)));
-  set('k-pot', R(totalSale - totalCost));
+  set('k-res', (res < 0 ? '−' : '+') + R(Math.abs(res)));
+  set('k-pot', R(stockMargin));
   set('k-sal', R(sal));
+
+  // Dynamic styling for result card
+  const resCard = document.getElementById('kpi-res');
+  const resVal  = document.getElementById('k-res');
+  const resIco  = document.getElementById('k-res-ico');
+  const resAct  = document.getElementById('k-res-action');
+  if (resCard && resVal && resAct) {
+    if (res < 0) {
+      resCard.style.borderLeft = '4px solid var(--red)';
+      resVal.style.fontSize = '28px';
+      resVal.className = 'kpi-val cr';
+      resIco.textContent = '📉';
+      const needed = Math.max(0, Math.abs(res) - stockMargin);
+      resAct.innerHTML = needed > 0
+        ? `<span style="color:var(--yellow)">💡 Venda ${R(needed)} do estoque para empatar</span>`
+        : `<span style="color:var(--green)">✓ Margem do estoque cobre o prejuízo</span>`;
+    } else {
+      resCard.style.borderLeft = '4px solid var(--green)';
+      resVal.style.fontSize = '28px';
+      resVal.className = 'kpi-val cg';
+      resIco.textContent = '📈';
+      resAct.innerHTML = '<span style="color:var(--green)">✓ Operação no lucro</span>';
+    }
+  }
 }
 
 // ── FINANCIAL ────────────────────────────────────────────────────────────────
@@ -1011,8 +1064,16 @@ function renderSizes() {
   const gPct = c.G/tot*100, ggPct = c.GG/tot*100;
   const bgEl  = document.getElementById('badge-g');
   const bggEl = document.getElementById('badge-gg');
-  if(bgEl)  { bgEl.textContent  = gPct  > 30 ? 'CRÍTICO' : gPct  > 18 ? 'ATENÇÃO' : 'OK'; bgEl.className  = 'badge ' + (gPct  > 30 ? 'bcr' : gPct  > 18 ? 'bwn' : 'bok'); }
-  if(bggEl) { bggEl.textContent = ggPct > 40 ? 'CRÍTICO' : ggPct > 25 ? 'ATENÇÃO' : 'OK'; bggEl.className = 'badge ' + (ggPct > 40 ? 'bcr' : ggPct > 25 ? 'bwn' : 'bok'); }
+  if(bgEl) {
+    const gLabel = gPct > 30 ? 'CRÍTICO' : gPct > 18 ? 'ATENÇÃO' : 'OK';
+    bgEl.textContent = gLabel; bgEl.className = 'badge badge-link ' + (gPct > 30 ? 'bcr' : gPct > 18 ? 'bwn' : 'bok');
+    bgEl.title = 'Ver estoque de G'; bgEl.onclick = function(){ switchTab('stock', document.querySelector('.tab-btn:nth-child(2)')); };
+  }
+  if(bggEl) {
+    const ggLabel = ggPct > 40 ? 'CRÍTICO' : ggPct > 25 ? 'ATENÇÃO' : 'OK';
+    bggEl.textContent = ggLabel; bggEl.className = 'badge badge-link ' + (ggPct > 40 ? 'bcr' : ggPct > 25 ? 'bwn' : 'bok');
+    bggEl.title = 'Ver estoque de GG'; bggEl.onclick = function(){ switchTab('stock', document.querySelector('.tab-btn:nth-child(2)')); };
+  }
 }
 
 // ── STOCK TABLE ───────────────────────────────────────────────────────────────
@@ -1056,6 +1117,7 @@ function renderStock() {
       const mg = item.cost > 0 ? ((item.sale - item.cost) / item.sale * 100).toFixed(1) : '—';
 
       const tr = document.createElement('tr');
+      if (item.qty === 0) tr.style.opacity = '0.45';
       tr.innerHTML = `
         <td>
           <span style="color:var(--txt);font-weight:600">${item.color}</span>
@@ -1220,14 +1282,31 @@ function renderSales(filtered) {
   sorted.forEach(function(sale) {
     const payMap = { 'Pix':'pay-pix', 'Dinheiro':'pay-din', 'Cartão':'pay-car', 'Fiado':'pay-fia' };
     const payClass = payMap[sale.payment] || 'pay-out';
+
+    // Normalise date to DD/MM/AAAA
+    var dateStr = sale.date || '—';
+    if (dateStr !== '—') {
+      var d = new Date(dateStr);
+      if (!isNaN(d.getTime()) && !/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+        var dd = String(d.getUTCDate()).padStart(2,'0');
+        var mm = String(d.getUTCMonth()+1).padStart(2,'0');
+        var yy = d.getUTCFullYear();
+        dateStr = dd + '/' + mm + '/' + yy;
+      }
+    }
+
+    // Notes: truncate + tooltip
+    var notesRaw = sale.notes || '';
+    var notesDisplay = notesRaw.length > 20 ? notesRaw.substring(0,20) + '...' : notesRaw;
+
     const tr = document.createElement('tr');
     tr.innerHTML =
-      '<td style="text-align:left;white-space:nowrap;color:var(--txt2)">' + (sale.date || '—') + '</td>' +
+      '<td style="text-align:left;white-space:nowrap;min-width:110px;color:var(--txt2)">' + dateStr + '</td>' +
       '<td style="text-align:left;font-weight:600">' + (sale.buyer || '—') + '</td>' +
       '<td style="text-align:left;color:var(--txt2)">' + (sale.product || '—') + '</td>' +
       '<td style="color:var(--green);font-weight:700">' + R(sale.value) + '</td>' +
       '<td><span class="pay-pill ' + payClass + '">' + (sale.payment || 'Pix') + '</span></td>' +
-      '<td style="text-align:left;color:var(--txt3);font-size:12px">' + (sale.notes || '') + '</td>';
+      '<td style="text-align:left;color:var(--txt3);font-size:12px" title="' + notesRaw.replace(/"/g,'&quot;') + '">' + notesDisplay + '</td>';
     tbody.appendChild(tr);
   });
 }
@@ -1240,6 +1319,12 @@ function filterSales() {
            (s.product || '').toLowerCase().includes(q) ||
            (s.notes   || '').toLowerCase().includes(q);
   });
+  if (!filtered.length) {
+    set('sk-count', 0); set('sk-fat', R(0)); set('sk-avg', R(0));
+    document.getElementById('sales-tbody').innerHTML =
+      '<tr><td colspan="6"><div class="empty-state"><h3>Nenhuma venda encontrada</h3><p>Tente buscar por outro nome, produto ou observação.</p></div></td></tr>';
+    return;
+  }
   renderSales(filtered);
 }
 
@@ -1337,6 +1422,49 @@ async function submitSale() {
     btn.textContent = 'Registrar Venda';
   }
 }
+
+// ── ALERTS ────────────────────────────────────────────────────────────────────
+function renderAlerts() {
+  const bar = document.getElementById('alerts-bar');
+  if (!bar) return;
+  const f = S.fin;
+  const fat = f.faturamento || 4695;
+  const cus = f.custoProducao || 5710.80;
+  const res = fat - cus;
+
+  const c = {P:0, M:0, G:0, GG:0, U:0};
+  S.items.forEach(function(r) {
+    if      (r.size==='P')  c.P  += r.qty;
+    else if (r.size==='M')  c.M  += r.qty;
+    else if (r.size==='G')  c.G  += r.qty;
+    else if (r.size==='GG') c.GG += r.qty;
+    else                    c.U  += r.qty;
+  });
+  const tot = Math.max(1, c.P+c.M+c.G+c.GG+c.U);
+  const zeroItems = S.items.filter(function(r){ return r.qty === 0; }).length;
+
+  var pills = '';
+  if (res < 0) {
+    pills += '<div class="alert-pill alert-red">📉 Resultado negativo de ' + R(Math.abs(res)) + '</div>';
+  }
+  if (c.GG/tot > 0.25) {
+    pills += '<div class="alert-pill alert-yellow">⚠️ Estoque concentrado em GG (' + (c.GG/tot*100).toFixed(0) + '%)</div>';
+  } else if (c.G/tot > 0.25) {
+    pills += '<div class="alert-pill alert-yellow">⚠️ Estoque concentrado em G (' + (c.G/tot*100).toFixed(0) + '%)</div>';
+  }
+  if (zeroItems > 0) {
+    pills += '<div class="alert-pill alert-blue">📦 ' + zeroItems + ' variação' + (zeroItems>1?'ões':'') + ' sem estoque</div>';
+  }
+  bar.innerHTML = pills;
+}
+
+// ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+  if (e.key === '1') document.querySelector('.tab-btn:nth-child(1)').click();
+  if (e.key === '2') document.querySelector('.tab-btn:nth-child(2)').click();
+  if (e.key === '3') document.querySelector('.tab-btn:nth-child(3)').click();
+});
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
