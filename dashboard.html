@@ -9,7 +9,7 @@
       --bg:     #080d1a;
       --bg2:    #0e1628;
       --card:   rgba(255,255,255,.045);
-      --cardh:  rgba(255,255,255,.075);h
+      --cardh:  rgba(255,255,255,.075);
       --border: rgba(255,255,255,.085);
       --blue:   #00c2ff;
       --coral:  #ff6b35;
@@ -915,8 +915,12 @@ async function saveAll() {
 
 // ── LOAD DATA ─────────────────────────────────────────────────────────────────
 function loadData(data) {
-  S.items  = (data.items || []).map(r => ({...r}));
-  S.saved  = (data.items || []).map(r => ({...r}));
+  // Filter out summary/total rows from the spreadsheet
+  const clean = (data.items || []).filter(r =>
+    r.model && !/^total/i.test(r.model.trim()) && (r.cost > 0 || r.sale > 0)
+  );
+  S.items  = clean.map(r => ({...r}));
+  S.saved  = clean.map(r => ({...r}));
   S.fin    = data.financial || {};
   S.dirty  = false;
   S.lastSync = new Date();
@@ -1336,7 +1340,7 @@ async function submitSale() {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
-  // Esconde o modal de setup imediatamente — a DEFAULT_URL já está configurada
+  // Guarantee modal is hidden before anything else runs
   document.getElementById('setup-overlay').classList.add('hidden');
 
   // Save URL to localStorage if using the default
