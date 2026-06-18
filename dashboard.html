@@ -853,10 +853,27 @@ async function submitSale(){
 (function init(){
   el('setup-overlay').classList.add('hidden');
   var cached=getCached();
-  if(S.url){refresh();}
-  else if(cached&&cached.items&&cached.items.length){S.offline=true;loadData(cached);setConn('warn','Offline');}
-  else{S.offline=true;loadData(FALLBACK);setConn('warn','Offline');}
+  // Mostra algo na hora (cache ou dados embutidos) pra nunca ficar em branco
+  if(cached&&cached.items&&cached.items.length){loadData(cached);}
+  else{loadData(FALLBACK);}
+  if(S.url){initialLoad();}
+  else{S.offline=true;setConn('warn','Offline');}
 })();
+
+// Carga inicial com 1 nova tentativa (cobre o cold start do Apps Script)
+async function initialLoad(){
+  for(var attempt=0;attempt<2;attempt++){
+    try{
+      setConn('loading','Sincronizando…');
+      var data=await api(S.url,'getAll');
+      if(data.error)throw new Error(data.error);
+      S.offline=false; loadData(data); return;
+    }catch(e){
+      if(attempt===0){ await new Promise(function(r){setTimeout(r,1800);}); continue; }
+      setConn('error','Erro — toque em Atualizar');
+    }
+  }
+}
 
 function toast(msg,type){var t=el('toast');t.textContent=msg;
   t.className='toast show '+(type==='ok'?'t-ok':type==='err'?'t-err':'t-info');
