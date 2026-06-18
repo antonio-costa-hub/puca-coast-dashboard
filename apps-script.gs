@@ -1,15 +1,34 @@
-var SPREADSHEET_ID = '1CGBTVDP3tKekeMBFAgbN3bYugOmUQ7w2vJrhWb-CEuY';
+/**
+ * PUCA COAST · DROP 4 — Backend (Google Apps Script)
+ * ----------------------------------------------------
+ * Conecta o dashboard à planilha. Lê o estoque (tabela de SKUs) e o registro
+ * de vendas, e grava de volta quando você edita no dashboard.
+ *
+ * COMO PUBLICAR:
+ *  1. Abra a planilha → Extensões > Apps Script
+ *  2. Apague tudo, cole este arquivo inteiro e salve (Ctrl+S)
+ *  3. Implantar > Nova implantação > Tipo: App da Web
+ *  4. Executar como: Eu  ·  Acesso: Qualquer pessoa
+ *  5. Implantar > Autorizar > copie a URL (.../exec) e cole no dashboard
+ */
 
-// ── Roteador ──────────────────────────────────────────────────────────────────
+var SPREADSHEET_ID = '1t4dkMjd5ByYFV1hAScm3PkShlj66iSU-ZIFlWGbpcFY';
+
+// Cabeçalhos que identificam cada tabela dentro da planilha
+var STOCK_KEYS = ['sku', 'produto'];          // linha com "SKU" + "Produto"
+var SALES_HEADER = ['data', 'item'];          // linha com "Data" + "Item (SKU)"
+
+// ── Roteador ────────────────────────────────────────────────────────────────
 function doGet(e) {
-  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : 'getAll';
+  var action = (e && e.parameter && e.parameter.action) || 'getAll';
   var result;
   try {
-    if      (action === 'getAll')    result = getAll();
-    else if (action === 'updateQty') result = updateQty(parseInt(e.parameter.sheetRow, 10), parseInt(e.parameter.qty, 10));
-    else if (action === 'getSales')  result = getSales();
-    else if (action === 'addSale')   result = addSale(e.parameter);
-    else                             result = { error: 'Acao desconhecida: ' + action };
+    if      (action === 'getAll')      result = getAll();
+    else if (action === 'getSales')    result = getSales();
+    else if (action === 'setProduced') result = setProduced(int(e.parameter.sheetRow), int(e.parameter.qty));
+    else if (action === 'setSold')     result = setSold(int(e.parameter.sheetRow), int(e.parameter.qty));
+    else if (action === 'addSaleLine') result = addSaleLine(e.parameter);
+    else                               result = { error: 'Ação desconhecida: ' + action };
   } catch (err) {
     result = { error: String(err) };
   }
@@ -18,252 +37,182 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ── Utilitário ────────────────────────────────────────────────────────────────
-function findSheet(ss, keyword) {
+function int(v) { return parseInt(v, 10); }
+function norm(v) { return String(v == null ? '' : v).trim().toLowerCase(); }
+
+// ── Localiza a tabela de estoque (SKU / Produto / Cor / Tamanho / ...) ───────
+function findStockSheet(ss) {
   var sheets = ss.getSheets();
-  for (var i = 0; i < sheets.length; i++) {
-    if (sheets[i].getName().indexOf(keyword) > -1) return sheets[i];
+  for (var s = 0; s < sheets.length; s++) {
+    var vals = sheets[s].getDataRange().getValues();
+    for (var r = 0; r < vals.length; r++) {
+      if (norm(vals[r][0]) === STOCK_KEYS[0] && norm(vals[r][1]) === STOCK_KEYS[1]) {
+        return { sheet: sheets[s], headerRow: r, vals: vals };
+      }
+    }
   }
   return null;
 }
 
-// ── getAll: estoque + financeiro + KPIs + projeções + combos ─────────────────
+// Colunas (1-indexadas) na tabela de SKUs
+// A SKU · B Produto · C Cor · D Tamanho · E Custo · F Preço · G Produzida · H Vendida · I Estoque
+var COL = { sku:1, product:2, color:3, size:4, cost:5, sale:6, produced:7, sold:8, stock:9 };
+
+// ── Lê tudo: itens de estoque + vendas ──────────────────────────────────────
 function getAll() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var info = findStockSheet(ss);
+  if (!info) return { error: 'Tabela de estoque (SKU/Produto) não encontrada.' };
+
+  var items = [];
+  for (var i = info.headerRow + 1; i < info.vals.length; i++) {
+    var row = info.vals[i];
+    var sku = String(row[0]).trim();
+    if (!sku) break;                                  // primeira linha vazia = fim da tabela
+    if (/^total/i.test(sku)) break;
+    items.push({
+      sheetRow: i + 1,
+      sku:      sku,
+      product:  String(row[1]).trim(),
+      color:    String(row[2]).trim(),
+      size:     String(row[3]).trim(),
+      cost:     Number(row[4]) || 0,
+      sale:     Number(row[5]) || 0,
+      produced: Number(row[6]) || 0,
+      sold:     Number(row[7]) || 0
+    });
+  }
+
   return {
-    ok:        true,
-    items:     readEstoque(ss),
-    financial: readFinancial(ss),
-    kpis:      readKPIs(ss),
-    projecoes: readProjecoes(ss),
-    combos:    readCombos(ss),
+    ok: true,
+    items: items,
+    sales: readSales(ss).sales,
     updatedAt: new Date().toISOString()
   };
 }
 
-// ── Estoque Detalhado ─────────────────────────────────────────────────────────
-// Colunas: A=Modelo B=Cor C=Tamanho D=Quantidade E=Custo Unit. F=Preço Venda
-function readEstoque(ss) {
-  var sheet = findSheet(ss, 'Estoque');
-  if (!sheet) return [];
-  var vals = sheet.getDataRange().getValues();
-  var items = [];
-  for (var i = 1; i < vals.length; i++) {
-    var row = vals[i];
-    var model = String(row[0] || '').trim();
-    if (!model || model.toUpperCase().indexOf('TOTAL') > -1) continue;
-    items.push({
-      sheetRow: i + 1,
-      model:    model,
-      color:    String(row[1] || '').trim(),
-      size:     String(row[2] || '').trim(),
-      qty:      Number(row[3]) || 0,
-      cost:     Number(row[4]) || 0,
-      sale:     Number(row[5]) || 0
-    });
-  }
-  return items;
-}
-
-function updateQty(sheetRow, qty) {
-  if (isNaN(sheetRow) || isNaN(qty) || qty < 0) return { error: 'Parametros invalidos.' };
-  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = findSheet(ss, 'Estoque');
-  if (!sheet) return { error: 'Aba Estoque Detalhado nao encontrada.' };
-  sheet.getRange(sheetRow, 4).setValue(qty); // coluna D = Quantidade
+// ── Estoque: grava quantidade produzida ─────────────────────────────────────
+function setProduced(sheetRow, qty) {
+  if (isNaN(sheetRow) || isNaN(qty) || qty < 0) return { error: 'Parâmetros inválidos.' };
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var info = findStockSheet(ss);
+  if (!info) return { error: 'Aba de estoque não encontrada.' };
+  info.sheet.getRange(sheetRow, COL.produced).setValue(qty);
+  syncStockCell(info.sheet, sheetRow);
   SpreadsheetApp.flush();
-  return { ok: true, sheetRow: sheetRow, qty: qty };
+  return { ok: true, sheetRow: sheetRow, produced: qty };
 }
 
-// ── Resumo Financeiro ─────────────────────────────────────────────────────────
-function readFinancial(ss) {
-  var sheet = findSheet(ss, 'Resumo');
-  if (!sheet) return {};
-  var vals = sheet.getDataRange().getValues();
-  var labels = {
-    'Caixa Disponivel': 'caixa', 'Caixa Disponível': 'caixa',
-    'A Receber - Parcela':       'aReceberParcela',
-    'A Receber - Outra Entrada': 'aReceberOutra',
-    'TOTAL DISPONIVEL': 'totalDisponivel', 'TOTAL DISPONÍVEL': 'totalDisponivel',
-    'Dividas a Pagar': 'dividas', 'Dívidas a Pagar': 'dividas',
-    'SALDO REAL':                'saldoReal',
-    'Faturamento Total':         'faturamento',
-    'Custo de Producao': 'custoProducao', 'Custo de Produção': 'custoProducao',
-    'Total Produzido (pecas)': 'totalProduzido', 'Total Produzido (peças)': 'totalProduzido',
-    'Total Vendido (pecas)': 'totalVendido', 'Total Vendido (peças)': 'totalVendido',
-    'Estoque Atual (pecas)': 'estoqueAtual', 'Estoque Atual (peças)': 'estoqueAtual',
-    'Taxa de Venda':             'taxaVenda',
-    'Valor de Venda (preco cheio)': 'estoqueVenda', 'Valor de Venda (preço cheio)': 'estoqueVenda',
-    'Valor de Custo':            'estoqueCusto',
-    'Margem Potencial':          'margemPotencial'
-  };
-  var result = {};
-  for (var r = 0; r < vals.length; r++) {
-    // Remove emojis e normaliza para fazer match nos labels
-    var key = String(vals[r][0] || '').replace(/[^\x00-\xFF]/g, '').trim();
-    if (labels[key] !== undefined && result[labels[key]] === undefined) {
-      result[labels[key]] = vals[r][1];
-    }
+// ── Estoque: grava quantidade vendida ───────────────────────────────────────
+function setSold(sheetRow, qty) {
+  if (isNaN(sheetRow) || isNaN(qty) || qty < 0) return { error: 'Parâmetros inválidos.' };
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var info = findStockSheet(ss);
+  if (!info) return { error: 'Aba de estoque não encontrada.' };
+  var cell = info.sheet.getRange(sheetRow, COL.sold);
+  // Se "Qtd vendida" for fórmula (ex.: SOMASE do registro), não sobrescreve.
+  if (cell.getFormula()) {
+    return { ok: true, sheetRow: sheetRow, sold: Number(cell.getValue()) || 0, formula: true };
   }
-  return result;
+  cell.setValue(qty);
+  syncStockCell(info.sheet, sheetRow);
+  SpreadsheetApp.flush();
+  return { ok: true, sheetRow: sheetRow, sold: qty };
 }
 
-// ── KPIs Dashboard ────────────────────────────────────────────────────────────
-function readKPIs(ss) {
-  var sheet = findSheet(ss, 'KPI');
-  if (!sheet) return {};
-  var vals = sheet.getDataRange().getValues();
-  var labels = {
-    'Taxa de Venda Atual':       'taxaVendaAtual',
-    'Margem Media Produtos': 'margemMedia', 'Margem Média Produtos': 'margemMedia',
-    'Ticket Medio': 'ticketMedio', 'Ticket Médio': 'ticketMedio',
-    'Giro de Estoque (dias)':    'giroEstoque',
-    'ROI da Producao': 'roi', 'ROI da Produção': 'roi'
-  };
-  var result = {};
-  for (var r = 0; r < vals.length; r++) {
-    var key = String(vals[r][0] || '').replace(/[^\x00-\xFF]/g, '').trim();
-    if (labels[key]) result[labels[key]] = vals[r][1];
-  }
-  return result;
+// Se "Estoque atual" NÃO for fórmula, mantém = produzida − vendida
+function syncStockCell(sheet, sheetRow) {
+  var cell = sheet.getRange(sheetRow, COL.stock);
+  if (cell.getFormula()) return;                      // é fórmula → não toca
+  var prod = Number(sheet.getRange(sheetRow, COL.produced).getValue()) || 0;
+  var sold = Number(sheet.getRange(sheetRow, COL.sold).getValue()) || 0;
+  cell.setValue(Math.max(0, prod - sold));
 }
 
-// ── Projeções ─────────────────────────────────────────────────────────────────
-function readProjecoes(ss) {
-  var sheet = findSheet(ss, 'Proj');
-  if (!sheet) return { cenarioA: {}, cenarioB: {} };
-  var vals = sheet.getDataRange().getValues();
-  var cA = {}, cB = {}, scenario = '';
-  var ml = {
-    'Budget Ads':           'budgetAds',
-    'ROAS Esperado':        'roas',
-    'Faturamento Projetado':'faturamento',
-    'Margem Bruta (55%)':   'margemBruta',
-    'Lucro Liquido': 'lucroLiquido', 'Lucro Líquido': 'lucroLiquido'
-  };
-  for (var r = 0; r < vals.length; r++) {
-    var c = String(vals[r][0] || '');
-    var cu = c.toUpperCase();
-    if (cu.indexOf('CENA') > -1 && cu.indexOf(' A') > -1 && cu.indexOf(' B') < 0) { scenario = 'A'; continue; }
-    if (cu.indexOf('CENA') > -1 && cu.indexOf(' B') > -1)                         { scenario = 'B'; continue; }
-    var lbl = ml[c.trim()];
-    if (lbl) {
-      if (scenario === 'A') cA[lbl] = vals[r][1];
-      if (scenario === 'B') cB[lbl] = vals[r][1];
-    }
-  }
-  return { cenarioA: cA, cenarioB: cB };
-}
-
-// ── Custos e Margens + Combos ─────────────────────────────────────────────────
-function readCombos(ss) {
-  var sheet = findSheet(ss, 'Custo');
-  if (!sheet) return { produtos: [], combos: [] };
-  var vals = sheet.getDataRange().getValues();
-  var produtos = [], combos = [], section = '';
-  for (var r = 0; r < vals.length; r++) {
-    var cell = String(vals[r][0] || '').trim();
-    if (cell === 'TABELA DE CUSTOS E PREÇOS') { section = 'prod';  continue; }
-    if (cell === 'COMBOS SUGERIDOS')           { section = 'combo'; continue; }
-    if (!cell || cell === 'Produto' || cell === 'Combo') continue;
-    if (section === 'prod' && vals[r][1] !== '') {
-      produtos.push({
-        nome:      cell,
-        custo:     Number(vals[r][1]) || 0,
-        venda:     Number(vals[r][2]) || 0,
-        margemR:   Number(vals[r][3]) || 0,
-        margemPct: parseFloat(String(vals[r][4]).replace('%', '')) || 0,
-        markup:    parseFloat(String(vals[r][5]).replace('x', '')) || 0
-      });
-    } else if (section === 'combo' && vals[r][2] !== '') {
-      combos.push({
-        nome:          cell,
-        composicao:    String(vals[r][1] || '').trim(),
-        custo:         Number(vals[r][2]) || 0,
-        precoSugerido: Number(vals[r][3]) || 0,
-        desconto:      Number(vals[r][4]) || 0,
-        margem:        Number(vals[r][5]) || 0
-      });
-    }
-  }
-  return { produtos: produtos, combos: combos };
-}
-
-// ── Vendas ────────────────────────────────────────────────────────────────────
-// Colunas: Data | Cliente | Produto | Valor | Pagamento | Status | Observações
+// ── Vendas ──────────────────────────────────────────────────────────────────
 function getSales() {
-  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = findSheet(ss, 'Vendas');
-  if (!sheet) return { ok: true, sales: [] };
-  var vals = sheet.getDataRange().getValues();
-  if (vals.length < 2) return { ok: true, sales: [] };
+  return readSales(SpreadsheetApp.openById(SPREADSHEET_ID));
+}
 
-  // Detecta colunas pelo cabeçalho
-  var h = vals[0].map(function(c){ return String(c).trim().toLowerCase(); });
-  var ci = {
-    date:    h.indexOf('data'),
-    buyer:   Math.max(h.indexOf('cliente'), h.indexOf('nome')),
-    product: h.indexOf('produto'),
-    value:   h.indexOf('valor'),
-    payment: h.indexOf('pagamento'),
-    status:  h.indexOf('status'),
-    notes:   Math.max(h.indexOf('observacao'), h.indexOf('observações'), h.indexOf('obs'))
-  };
-  if (ci.date    < 0) ci.date    = 0;
-  if (ci.buyer   < 0) ci.buyer   = 1;
-  if (ci.product < 0) ci.product = 2;
-  if (ci.value   < 0) ci.value   = 3;
-  if (ci.payment < 0) ci.payment = 4;
-  if (ci.status  < 0) ci.status  = 5;
+function findSalesSheet(ss) {
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var vals = sheets[s].getDataRange().getValues();
+    for (var r = 0; r < vals.length; r++) {
+      if (norm(vals[r][0]) === 'data' && norm(vals[r][1]).indexOf('item') === 0) {
+        return { sheet: sheets[s], headerRow: r, vals: vals };
+      }
+    }
+  }
+  // Não achou: cria uma aba dedicada
+  var sheet = ss.getSheetByName('Registro de Vendas');
+  if (!sheet) {
+    sheet = ss.insertSheet('Registro de Vendas');
+    sheet.appendRow(['Data', 'Item (SKU)', 'Qtd', 'Preço unit.', 'Total', 'Canal / Cliente', 'Obs.']);
+    sheet.getRange(1, 1, 1, 7).setFontWeight('bold');
+  }
+  return { sheet: sheet, headerRow: 0, vals: sheet.getDataRange().getValues() };
+}
 
+function readSales(ss) {
+  var info = findSalesSheet(ss);
+  var vals = info.sheet.getDataRange().getValues();
   var sales = [];
-  for (var i = 1; i < vals.length; i++) {
+  for (var i = info.headerRow + 1; i < vals.length; i++) {
     var row = vals[i];
-    if (!row[ci.buyer] && !row[ci.product]) continue;
-    var d = row[ci.date];
-    var dateStr = d instanceof Date
-      ? Utilities.formatDate(d, 'America/Sao_Paulo', 'dd/MM/yyyy')
-      : String(d || '');
+    if (!row[0] && !row[1] && !row[5]) continue;       // linha vazia
     sales.push({
-      date:    dateStr,
-      buyer:   String(row[ci.buyer]   || ''),
-      product: String(row[ci.product] || ''),
-      value:   Number(row[ci.value])  || 0,
-      status:  String(row[ci.status]  || 'Pago'),
-      payment: String(row[ci.payment] || 'Pix'),
-      notes:   ci.notes >= 0 ? String(row[ci.notes] || '') : ''
+      id:      i + 1,
+      date:    fmtDate(row[0]),
+      sku:     String(row[1] || ''),
+      qty:     Number(row[2]) || 0,
+      unit:    Number(row[3]) || 0,
+      total:   Number(row[4]) || 0,
+      client:  String(row[5] || ''),
+      notes:   String(row[6] || '')
     });
   }
   return { ok: true, sales: sales };
 }
 
-function addSale(params) {
-  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = findSheet(ss, 'Vendas');
-  if (!sheet) return { error: 'Aba de vendas nao encontrada.' };
+// Grava UMA linha de venda (o dashboard chama uma vez por produto do pedido)
+function addSaleLine(p) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var info = findSalesSheet(ss);
 
-  var date    = params.date    ? decodeURIComponent(params.date)    : new Date().toLocaleDateString('pt-BR');
-  var buyer   = params.buyer   ? decodeURIComponent(params.buyer)   : '';
-  var product = params.product ? decodeURIComponent(params.product) : '';
-  var value   = parseFloat(params.value)   || 0;
-  var status  = params.status  ? decodeURIComponent(params.status)  : 'Pago';
-  var payment = params.payment ? decodeURIComponent(params.payment) : 'Pix';
-  var notes   = params.notes   ? decodeURIComponent(params.notes)   : '';
+  var date   = p.date   ? decodeURIComponent(p.date)   : Utilities.formatDate(new Date(), 'GMT-3', 'dd/MM/yyyy');
+  var sku    = p.sku    ? decodeURIComponent(p.sku)    : '';
+  var qty    = Number(p.qty)  || 1;
+  var unit   = Number(p.unit) || 0;
+  var total  = qty * unit;
+  var client = p.client ? decodeURIComponent(p.client) : '';
+  var notes  = p.notes  ? decodeURIComponent(p.notes)  : '';
 
-  // Formato: Data, Cliente, Produto, Valor, Pagamento, Status, Observações
-  sheet.appendRow([date, buyer, product, value, payment, status, notes]);
+  // acha a primeira linha vazia abaixo do cabeçalho do registro
+  var sheet = info.sheet;
+  var lastRow = sheet.getLastRow();
+  sheet.getRange(lastRow + 1, 1, 1, 7).setValues([[date, sku, qty, unit, total, client, notes]]);
 
-  // Baixa estoque automaticamente se informado
-  if (params.sheetRow && params.qtyToDeduct) {
-    var estSheet = findSheet(ss, 'Estoque');
-    if (estSheet) {
-      var row    = parseInt(params.sheetRow, 10);
-      var deduct = parseInt(params.qtyToDeduct, 10);
-      var cur = Number(estSheet.getRange(row, 4).getValue()) || 0;
-      estSheet.getRange(row, 4).setValue(Math.max(0, cur - deduct));
+  // baixa o estoque: soma à quantidade vendida do SKU
+  // (se "Qtd vendida" for fórmula, ela já se atualiza sozinha com a linha acima)
+  if (p.skuRow) {
+    var sr = int(p.skuRow);
+    var st = findStockSheet(ss);
+    if (st && sr > 0) {
+      var soldCell = st.sheet.getRange(sr, COL.sold);
+      if (!soldCell.getFormula()) {
+        var cur = Number(soldCell.getValue()) || 0;
+        soldCell.setValue(cur + qty);
+        syncStockCell(st.sheet, sr);
+      }
     }
   }
 
   SpreadsheetApp.flush();
   return { ok: true };
+}
+
+function fmtDate(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, 'GMT-3', 'dd/MM/yyyy');
+  return String(v || '');
 }
